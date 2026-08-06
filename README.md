@@ -21,4 +21,4 @@ Next you should make a fork of this project on GitHub. You can do this by clicki
 
 Next you must input the Cloudflare API token into your GitHub fork as a secret. You can do this by going to the "Settings" tab of your fork, then under the "Secrets and variables" dropdown in the sidebar, click "Actions". Click the "New repository secret" button and add a secret with the name `API_TOKEN` and the value of your Cloudflare API key. Create another secret with the name `ACCOUNT_ID` and the value of your Cloudflare account ID. 
 
-Finally, you should ensure the GitHub actions are enabled for your fork. You can do this by going to the "Settings" tab of your fork, then under the "Actions" dropdown in the sidebar, click "General". Ensure the all actions and reusable workflows are permitted, and that workflow has read and write permissions.
+Finally, you should ensure the GitHub actions are enabled for your fork. You can do this by going to the "Settings" tab of your fork, then under the "Actions" dropdown in the sidebar, click "General". Ensure the all actions and reusable workflows are permitted, and that workflow has read and write permissions .
