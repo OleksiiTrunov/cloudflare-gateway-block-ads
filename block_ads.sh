@@ -110,11 +110,16 @@ if [[ ${current_lists_count} -gt 0 ]]; then
             { "name": $name, "type": "DOMAIN", "items": $items }
         ' < "${chunked_lists[0]}" > payload.json
 
-        # Overwrite list using PUT
-        list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X PUT "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
+        # Overwrite list using PUT and capture response for debugging
+        response=$(curl -sL -X PUT "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data @payload.json) || error "Failed to update list ${list_id}"
+        --data @payload.json)
+        
+        if ! echo "$response" | jq -e '.success' > /dev/null; then
+            echo "Cloudflare Error Response: $response"
+            error "Failed to update list ${list_id}"
+        fi
 
         # Store the list ID
         used_list_ids+=("${list_id}")
