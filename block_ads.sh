@@ -23,10 +23,11 @@ function silent_error() {
 }
 
 # Download, clean, remove duplicates and wildcards for AdGuard list safely
+# Download, clean, remove duplicates and wildcards for AdGuard list safely
 curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://adguardteam.github.io/HostlistsRegistry/assets/filter_15.txt | \
     tr -d '\r' | \
     grep -vE '^\s*([!#@/]|.*\$)' | \
-    sed 's/^\|\|//g; s/\^$//g' | \
+    sed 's/^||//g; s/\^$//g' | \
     grep -vE '[/*:]' | \
     grep -v '\*' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
