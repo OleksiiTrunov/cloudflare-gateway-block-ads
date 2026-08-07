@@ -22,8 +22,11 @@ function silent_error() {
     exit 0
 }
 
-# Download the AdGuard DNS domains list
-curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://adguardteam.github.io/HostlistsRegistry/assets/filter_15.txt | grep -vE '^\s*(#|$)' > adguard_domains.txt || silent_error "Failed to download the domains list"
+# Download and clean the AdGuard domains list
+curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://adguardteam.github.io/HostlistsRegistry/assets/filter_15.txt | \
+    grep -vE '^\s*([!#@/]|.*\$)' | \
+    sed 's/^\|\|//g; s/\^$//g' | \
+    grep -vE '[/*:]' > adguard_domains.txt || silent_error "Failed to download the domains list"
 
 # Check if the file has changed
 git diff --exit-code adguard_domains.txt > /dev/null && silent_error "The domains list has not changed"
