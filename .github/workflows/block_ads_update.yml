@@ -28,3 +28,25 @@ jobs:
         run: |
           chmod +x block_ads.sh
           ./block_ads.sh
+      - name: Run the script
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x block_ads.sh
+          ./block_ads.sh
+
+      - name: Send Telegram notification on failure
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            🚨
+            Все поломалось!
+            О нет!
+            Cloudflare AdBlock не работает!
+            Скрипт не смог обновить списки. 
+            Посмотреть логи: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}    
