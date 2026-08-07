@@ -4,21 +4,21 @@
 API_TOKEN="$API_TOKEN"
 ACCOUNT_ID="$ACCOUNT_ID"
 PREFIX="Block ads"
-MAX_LIST_SIZE=9999
+MAX_LIST_SIZE=10000
 MAX_LISTS=100
 MAX_RETRIES=10
 
 # Define error function
 function error() {
     echo "Error: $1"
-    rm -f oisd_small_domainswild2.txt.*
+    rm -f oisd_small_domainswild2.txt.* payload.json remove_items.json
     exit 1
 }
 
 # Define silent error function
 function silent_error() {
     echo "Silent error: $1"
-    rm -f oisd_small_domainswild2.txt.*
+    rm -f oisd_small_domainswild2.txt.* payload.json remove_items.json
     exit 0
 }
 
@@ -96,29 +96,26 @@ if [[ ${current_lists_count} -gt 0 ]]; then
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json") || error "Failed to get list ${list_id} contents"
 
-        # Create list item values for removal
-        list_items_values=$(echo "${list_items}" | jq -r '.result | map(.value) | map(select(. != null))')
+        # Save removal items to a temp file to avoid ARG_MAX string length limits
+        echo "${list_items}" | jq -r '.result | map(.value) | map(select(. != null))' > remove_items.json
 
-        # Create list item array for appending from first chunked list
-        list_items_array=$(jq -R -s 'split("\n") | map(select(length > 0) | { "value": . })' "${chunked_lists[0]}")
+        # Process the raw text chunk and combine it with the removal items directly into a payload file
+        jq -R -s --slurpfile remove_items remove_items.json '
+            split("\n") | map(select(length > 0) | { "value": . }) as $append_items |
+            { "append": $append_items, "remove": $remove_items[0] }
+        ' < "${chunked_lists[0]}" > payload.json
 
-        # Create payload
-        payload=$(jq -n --argjson append_items "$list_items_array" --argjson remove_items "$list_items_values" '{
-            "append": $append_items,
-            "remove": $remove_items
-        }')
-
-        # Patch list
+        # Patch list using the generated payload file
         list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X PATCH "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data "$payload") || error "Failed to patch list ${list_id}"
+        --data @payload.json) || error "Failed to patch list ${list_id}"
 
         # Store the list ID
         used_list_ids+=("${list_id}")
 
-        # Delete the first chunked file and in the list
-        rm -f "${chunked_lists[0]}"
+        # Delete the first chunked file and temp json files
+        rm -f "${chunked_lists[0]}" payload.json remove_items.json
         chunked_lists=("${chunked_lists[@]:1}")
 
         # Increment list counter
@@ -133,24 +130,23 @@ for file in "${chunked_lists[@]}"; do
     # Format list counter
     formatted_counter=$(printf "%03d" "$list_counter")
 
-    # Create payload
-    payload=$(jq -n --arg PREFIX "${PREFIX} - ${formatted_counter}" --argjson items "$(jq -R -s 'split("\n") | map(select(length > 0) | { "value": . })' "${file}")" '{
-        "name": $PREFIX,
-        "type": "DOMAIN",
-        "items": $items
-    }')
+    # Build payload directly to file avoiding ARG_MAX limits
+    jq -R -s --arg PREFIX "${PREFIX} - ${formatted_counter}" '
+        split("\n") | map(select(length > 0) | { "value": . }) as $items |
+        { "name": $PREFIX, "type": "DOMAIN", "items": $items }
+    ' < "${file}" > payload.json
 
-    # Create list
+    # Create list using the generated payload file
     list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data "$payload") || error "Failed to create list"
+        --data @payload.json) || error "Failed to create list"
 
     # Store the list ID
     used_list_ids+=("$(echo "${list}" | jq -r '.result.id')")
 
-    # Delete the file
-    rm -f "${file}"
+    # Delete the file and payload
+    rm -f "${file}" payload.json
 
     # Increment list counter
     list_counter=$((list_counter + 1))
