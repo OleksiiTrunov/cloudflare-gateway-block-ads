@@ -22,14 +22,16 @@ function silent_error() {
     exit 0
 }
 
-# Download, clean and format the AdGuard domains list safely
+# Download, clean, remove duplicates and wildcards for AdGuard list safely
 curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://adguardteam.github.io/HostlistsRegistry/assets/filter_15.txt | \
     tr -d '\r' | \
     grep -vE '^\s*([!#@/]|.*\$)' | \
     sed 's/^\|\|//g; s/\^$//g' | \
     grep -vE '[/*:]' | \
+    grep -v '\*' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-    grep -v '^$' > adguard_domains.txt || silent_error "Failed to download the domains list"
+    grep -v '^$' | \
+    sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
 
 # Check if the file has changed
 git diff --exit-code adguard_domains.txt > /dev/null && silent_error "The domains list has not changed"
