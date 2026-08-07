@@ -22,32 +22,27 @@ function silent_error() {
     exit 0
 }
 
-# Download, clean, remove duplicates and wildcards for AdGuard list safely with debug output
+# Download and parse AdGuard DNS filter safely
 echo "Downloading AdGuard list..."
-curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/filter.txt | \
-    tr -d '\r' > downloaded_raw.txt
-
-echo "Raw lines downloaded: $(wc -l < downloaded_raw.txt)"
-
-# Process and filter the list
-cat downloaded_raw.txt | \
-    grep -vE '^\s*([!#@/]|.*\$)' | \
-    sed -E 's/^\|\|//' | \
-    sed -E 's/\^$//' | \
-    grep -vE '[/*:]' | \
-    grep -v '\*' | \
-    grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | \
+curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt" | \
+    tr -d '\r' | \
+    grep -vE '^\s*([!#@]' | \
+    sed 's/\$.*//g' | \
+    sed 's/^\|\|//g' | \
+    sed 's/\^$//g' | \
+    sed 's/\^//g' | \
+    grep -vE '[/:]' | \
     grep '\.' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
     grep -v '^$' | \
     sort -u > adguard_domains.txt
 
-rm -f downloaded_raw.txt
-
 echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
 
 # Ensure the file is not empty
 [[ -s adguard_domains.txt ]] || error "The domains list is empty after processing"
+
+# Ensure the file is not empty
 
 # Check if the file has changed
 git diff --exit-code adguard_domains.txt > /dev/null && silent_error "The domains list has not changed"
