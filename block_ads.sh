@@ -1,5 +1,5 @@
 #!/bin/bash
-
+exit 1
 # Replace these variables with your actual Cloudflare API token and account ID
 API_TOKEN="$API_TOKEN"
 ACCOUNT_ID="$ACCOUNT_ID"
