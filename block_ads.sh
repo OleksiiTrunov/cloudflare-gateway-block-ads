@@ -179,7 +179,7 @@ conditions=()
         }')
     done
     conditions=$(IFS=','; echo "${conditions[*]}")
-    conditions='"or": ['"$conditions"']'
+    conditions='"and": ['"$conditions"']'
 }
 
 # Create the JSON data dynamically
