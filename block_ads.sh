@@ -29,6 +29,7 @@ curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github
     grep -vE '^[[:space:]]*[!#@]' | \
     sed 's/\$.*//g' | \
     sed -E 's/^\|+//g' | \
+    sed -E 's/\|+$//g' | \
     sed 's/\^$//g' | \
     sed 's/\^//g' | \
     grep -vE '[/:]' | \
