@@ -35,7 +35,77 @@ curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github
     grep '\.' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
     grep -v '^$' | \
-    sort -u > adguard_domains.txt
+    sort -u > adguard_domains.txt# Create extra lists if required
+for file in "${chunked_lists[@]}"; do
+    echo "Creating list..."
+
+    # Format list counter
+    formatted_counter=$(printf "%03d" "$list_counter")
+
+    # Build payload safely stripping trailing CR and whitespace
+    jq -R -s --arg PREFIX "${PREFIX} - ${formatted_counter}" '
+        split("\n") | 
+        map(sub("\r$"; "") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "")) |
+        map(select(length > 0) | { "value": . }) as $items |
+        { "name": $PREFIX, "type": "DOMAIN", "items": $items }
+    ' < "${file}" > payload.json
+
+    # Create list using curl without -f to capture the exact error message from Cloudflare
+    response=$(curl -sSL --retry "$MAX_RETRIES" --retry-all-errors -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
+        -H "Authorization: Bearer ${API_TOKEN}" \
+        -H "Content-Type: application/json" \
+        --data @payload.json)
+
+    # Check if successful
+    if ! echo "$response" | jq -e '.success' > /dev/null; then
+        echo "Cloudflare Error Response: $response"
+        error "Failed to create list"
+    fi
+
+    # Store the list ID
+    used_list_ids+=("$(echo "$response" | jq -r '.result.id')")
+
+    # Delete the file and payload
+    rm -f "${file}" payload.json
+
+    # Increment list counter
+    list_counter=$((list_counter + 1))
+done# Create extra lists if required
+for file in "${chunked_lists[@]}"; do
+    echo "Creating list..."
+
+    # Format list counter
+    formatted_counter=$(printf "%03d" "$list_counter")
+
+    # Build payload safely stripping trailing CR and whitespace
+    jq -R -s --arg PREFIX "${PREFIX} - ${formatted_counter}" '
+        split("\n") | 
+        map(sub("\r$"; "") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "")) |
+        map(select(length > 0) | { "value": . }) as $items |
+        { "name": $PREFIX, "type": "DOMAIN", "items": $items }
+    ' < "${file}" > payload.json
+
+    # Create list using curl without -f to capture the exact error message from Cloudflare
+    response=$(curl -sSL --retry "$MAX_RETRIES" --retry-all-errors -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
+        -H "Authorization: Bearer ${API_TOKEN}" \
+        -H "Content-Type: application/json" \
+        --data @payload.json)
+
+    # Check if successful
+    if ! echo "$response" | jq -e '.success' > /dev/null; then
+        echo "Cloudflare Error Response: $response"
+        error "Failed to create list"
+    fi
+
+    # Store the list ID
+    used_list_ids+=("$(echo "$response" | jq -r '.result.id')")
+
+    # Delete the file and payload
+    rm -f "${file}" payload.json
+
+    # Increment list counter
+    list_counter=$((list_counter + 1))
+done
 
 echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
 
@@ -151,14 +221,20 @@ for file in "${chunked_lists[@]}"; do
         { "name": $PREFIX, "type": "DOMAIN", "items": $items }
     ' < "${file}" > payload.json
 
-    # Create list using the generated payload file
-    list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
+    # Create list using curl without -f to capture the exact error message from Cloudflare
+    response=$(curl -sSL --retry "$MAX_RETRIES" --retry-all-errors -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data @payload.json) || error "Failed to create list"
+        --data @payload.json)
+
+    # Check if successful
+    if ! echo "$response" | jq -e '.success' > /dev/null; then
+        echo "Cloudflare Error Response: $response"
+        error "Failed to create list"
+    fi
 
     # Store the list ID
-    used_list_ids+=("$(echo "${list}" | jq -r '.result.id')")
+    used_list_ids+=("$(echo "$response" | jq -r '.result.id')")
 
     # Delete the file and payload
     rm -f "${file}" payload.json
