@@ -26,7 +26,7 @@ function silent_error() {
 echo "Downloading AdGuard list..."
 curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt" | \
     tr -d '\r' | \
-    grep -vE '^\s*([!#@]' | \
+    grep -vE '^[[:space:]]*[!#@]' | \
     sed 's/\$.*//g' | \
     sed 's/^\|\|//g' | \
     sed 's/\^$//g' | \
@@ -41,9 +41,6 @@ echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
 
 # Ensure the file is not empty
 [[ -s adguard_domains.txt ]] || error "The domains list is empty after processing"
-
-# Ensure the file is not empty
-
 # Check if the file has changed
 git diff --exit-code adguard_domains.txt > /dev/null && silent_error "The domains list has not changed"
 
