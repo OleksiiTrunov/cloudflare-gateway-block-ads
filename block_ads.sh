@@ -11,14 +11,14 @@ MAX_RETRIES=10
 # Define error function
 function error() {
     echo "Error: $1"
-    rm -f oisd_small_domainswild2.txt.* payload.json remove_items.json
+    rm -f oisd_small_domainswild2.txt.* payload.json
     exit 1
 }
 
 # Define silent error function
 function silent_error() {
     echo "Silent error: $1"
-    rm -f oisd_small_domainswild2.txt.* payload.json remove_items.json
+    rm -f oisd_small_domainswild2.txt.* payload.json
     exit 0
 }
 
@@ -41,7 +41,7 @@ total_lines=$(wc -l < oisd_small_domainswild2.txt)
 total_lists=$((total_lines / MAX_LIST_SIZE))
 [[ $((total_lines % MAX_LIST_SIZE)) -ne 0 ]] && total_lists=$((total_lists + 1))
 
-# Get current lists from Cloudflare (Forcing per_page=1000 to bypass 50 items pagination limit)
+# Get current lists from Cloudflare (Forcing per_page=1000 to bypass pagination limits)
 current_lists=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists?per_page=1000" \
     -H "Authorization: Bearer ${API_TOKEN}" \
     -H "Content-Type: application/json") || error "Failed to get current lists from Cloudflare"
@@ -91,31 +91,27 @@ if [[ ${current_lists_count} -gt 0 ]]; then
 
         echo "Updating list ${list_id}..."
 
-        # Get list contents
-        list_items=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}/items?limit=${MAX_LIST_SIZE}" \
-        -H "Authorization: Bearer ${API_TOKEN}" \
-        -H "Content-Type: application/json") || error "Failed to get list ${list_id} contents"
+        # Get the existing list name
+        list_name=$(echo "${current_lists}" | jq -r --arg id "${list_id}" '.result[] | select(.id == $id) | .name')
 
-        # Save removal items to a temp file to avoid ARG_MAX limits
-        echo "${list_items}" | jq -r '.result | map(.value) | map(select(. != null))' > remove_items.json
-
-        # Process the raw text chunk and combine it with the removal items directly into a payload file
-        jq -R -s --slurpfile remove_items remove_items.json '
-            split("\n") | map(select(length > 0) | { "value": . }) as $append_items |
-            { "append": $append_items, "remove": ($remove_items[0] // []) }
+        # Build payload directly to file avoiding ARG_MAX limits. 
+        # Using PUT replaces the entire list items directly, bypassing the 1000 mutation limit of PATCH.
+        jq -R -s --arg name "${list_name}" '
+            split("\n") | map(select(length > 0) | { "value": . }) as $items |
+            { "name": $name, "type": "DOMAIN", "items": $items }
         ' < "${chunked_lists[0]}" > payload.json
 
-        # Patch list using the generated payload file
-        list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X PATCH "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
+        # Overwrite list using PUT
+        list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X PUT "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data @payload.json) || error "Failed to patch list ${list_id}"
+        --data @payload.json) || error "Failed to update list ${list_id}"
 
         # Store the list ID
         used_list_ids+=("${list_id}")
 
         # Delete the first chunked file and temp json files
-        rm -f "${chunked_lists[0]}" payload.json remove_items.json
+        rm -f "${chunked_lists[0]}" payload.json
         chunked_lists=("${chunked_lists[@]:1}")
 
         # Increment list counter
