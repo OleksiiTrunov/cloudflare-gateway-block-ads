@@ -11,14 +11,14 @@ MAX_RETRIES=10
 # Define error function
 function error() {
     echo "Error: $1"
-    rm -f adguard_domains.txt.* payload.json
+    rm -f adguard_domains.txt.* payload.json downloaded_raw.txt
     exit 1
 }
 
 # Define silent error function
 function silent_error() {
     echo "Silent error: $1"
-    rm -f adguard_domains.txt.* payload.json
+    rm -f adguard_domains.txt.* payload.json downloaded_raw.txt
     exit 0
 }
 
@@ -35,9 +35,15 @@ curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github
     grep '\.' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
     grep -v '^$' | \
-    sort -u > adguard_domains.txt# Create extra lists if required
-for file in "${chunked_lists[@]}"; do
-    echo "Creating list..."
+    sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
+
+echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
+
+# Ensure the file is not empty
+[[ -s adguard_domains.txt ]] || error "The domains list is empty after processing"
+
+# Check if the file has changed
+git diff --exit-code adguard_domains.txt > /dev/null && silent_error "The domains list has not changed"
 
     # Format list counter
     formatted_counter=$(printf "%03d" "$list_counter")
