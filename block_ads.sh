@@ -22,16 +22,21 @@ function silent_error() {
     exit 0
 }
 
-# Download, clean, remove duplicates and wildcards for AdGuard list safely
-# Download, clean, remove duplicates and wildcards for AdGuard list safely
+# Download, clean, and strictly validate AdGuard domains list
 curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://adguardteam.github.io/HostlistsRegistry/assets/filter_15.txt | \
     tr -d '\r' | \
     grep -vE '^\s*([!#@/]|.*\$)' | \
     sed 's/^||//g; s/\^$//g' | \
     grep -vE '[/*:]' | \
     grep -v '\*' | \
+    grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | \
+    grep '\.' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-    grep -v '^$' | \
+    tr '[:upper:]' '[:lower:]' | \
+    grep -E '^[a-z0-9_.-]+$' | \
+    grep -v '\.\.' | \
+    grep -v '^-\|-\$' | \
+    grep -v '^$\|^\.' | \
     sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
 
 # Check if the file has changed
@@ -103,23 +108,19 @@ if [[ ${current_lists_count} -gt 0 ]]; then
         # Get the existing list name
         list_name=$(echo "${current_lists}" | jq -r --arg id "${list_id}" '.result[] | select(.id == $id) | .name')
 
-        # Build payload directly to file avoiding ARG_MAX limits. 
-        # Using PUT replaces the entire list items directly, bypassing the 1000 mutation limit of PATCH.
+        # Build payload safely stripping trailing CR and whitespace
         jq -R -s --arg name "${list_name}" '
-            split("\n") | map(select(length > 0) | { "value": . }) as $items |
+            split("\n") | 
+            map(sub("\r$"; "") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "")) |
+            map(select(length > 0) | { "value": . }) as $items |
             { "name": $name, "type": "DOMAIN", "items": $items }
         ' < "${chunked_lists[0]}" > payload.json
 
-        # Overwrite list using PUT and capture response for debugging
-        response=$(curl -sL -X PUT "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
+        # Overwrite list using PUT
+        list=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X PUT "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists/${list_id}" \
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data @payload.json)
-        
-        if ! echo "$response" | jq -e '.success' > /dev/null; then
-            echo "Cloudflare Error Response: $response"
-            error "Failed to update list ${list_id}"
-        fi
+        --data @payload.json) || error "Failed to update list ${list_id}"
 
         # Store the list ID
         used_list_ids+=("${list_id}")
@@ -140,9 +141,11 @@ for file in "${chunked_lists[@]}"; do
     # Format list counter
     formatted_counter=$(printf "%03d" "$list_counter")
 
-    # Build payload directly to file avoiding ARG_MAX limits
+    # Build payload safely stripping trailing CR and whitespace
     jq -R -s --arg PREFIX "${PREFIX} - ${formatted_counter}" '
-        split("\n") | map(select(length > 0) | { "value": . }) as $items |
+        split("\n") | 
+        map(sub("\r$"; "") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "")) |
+        map(select(length > 0) | { "value": . }) as $items |
         { "name": $PREFIX, "type": "DOMAIN", "items": $items }
     ' < "${file}" > payload.json
 
@@ -263,4 +266,3 @@ git config --global user.name "$(gh api /users/${GITHUB_ACTOR} | jq .name -r)"
 git add adguard_domains.txt || error "Failed to add the domains list to repo"
 git commit -m "Update domains list" --author=. || error "Failed to commit the domains list to repo"
 git push origin main || error "Failed to push the domains list to repo"
-
