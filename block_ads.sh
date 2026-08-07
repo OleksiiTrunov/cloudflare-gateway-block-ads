@@ -22,21 +22,18 @@ function silent_error() {
     exit 0
 }
 
-# Download, clean, and strictly validate AdGuard domains list
+# Download, clean, remove comments, strip modifiers and extract clean domains safely
 curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors https://adguardteam.github.io/HostlistsRegistry/assets/filter_15.txt | \
     tr -d '\r' | \
-    grep -vE '^\s*([!#@/]|.*\$)' | \
-    sed 's/^||//g; s/\^$//g' | \
-    grep -vE '[/*:]' | \
-    grep -v '\*' | \
-    grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | \
+    grep -vE '^\s*[!#@]' | \
+    sed 's/\$.*//g' | \
+    sed 's/^\|\|//g' | \
+    sed 's/\^$//g' | \
+    sed 's/\^//g' | \
+    grep -vE '[/:]' | \
     grep '\.' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-    tr '[:upper:]' '[:lower:]' | \
-    grep -E '^[a-z0-9_.-]+$' | \
-    grep -v '\.\.' | \
-    grep -v '^-\|-\$' | \
-    grep -v '^$\|^\.' | \
+    grep -v '^$' | \
     sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
 
 # Check if the file has changed
