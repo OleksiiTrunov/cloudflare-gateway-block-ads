@@ -48,5 +48,5 @@ jobs:
             Все поломалось!
             О нет!
             Cloudflare AdBlock не работает!
-            Скрипт не смог обновить списки. 
-            Посмотреть логи: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}    
+            Скрипт не смог обновить списки! 
+               
