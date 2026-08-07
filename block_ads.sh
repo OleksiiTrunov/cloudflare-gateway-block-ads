@@ -4,7 +4,7 @@
 API_TOKEN="$API_TOKEN"
 ACCOUNT_ID="$ACCOUNT_ID"
 PREFIX="Block ads"
-MAX_LIST_SIZE=5000
+MAX_LIST_SIZE=1500
 MAX_LISTS=100
 MAX_RETRIES=10
 
@@ -41,13 +41,13 @@ total_lines=$(wc -l < oisd_small_domainswild2.txt)
 total_lists=$((total_lines / MAX_LIST_SIZE))
 [[ $((total_lines % MAX_LIST_SIZE)) -ne 0 ]] && total_lists=$((total_lists + 1))
 
-# Get current lists from Cloudflare
-current_lists=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
+# Get current lists from Cloudflare (Forcing per_page=1000 to bypass 50 items pagination limit)
+current_lists=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists?per_page=1000" \
     -H "Authorization: Bearer ${API_TOKEN}" \
     -H "Content-Type: application/json") || error "Failed to get current lists from Cloudflare"
     
-# Get current policies from Cloudflare
-current_policies=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/rules" \
+# Get current policies from Cloudflare (Forcing per_page=1000)
+current_policies=$(curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors -X GET "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/rules?per_page=1000" \
     -H "Authorization: Bearer ${API_TOKEN}" \
     -H "Content-Type: application/json") || error "Failed to get current policies from Cloudflare"
 
@@ -96,13 +96,13 @@ if [[ ${current_lists_count} -gt 0 ]]; then
         -H "Authorization: Bearer ${API_TOKEN}" \
         -H "Content-Type: application/json") || error "Failed to get list ${list_id} contents"
 
-        # Save removal items to a temp file to avoid ARG_MAX string length limits
+        # Save removal items to a temp file to avoid ARG_MAX limits
         echo "${list_items}" | jq -r '.result | map(.value) | map(select(. != null))' > remove_items.json
 
         # Process the raw text chunk and combine it with the removal items directly into a payload file
         jq -R -s --slurpfile remove_items remove_items.json '
             split("\n") | map(select(length > 0) | { "value": . }) as $append_items |
-            { "append": $append_items, "remove": $remove_items[0] }
+            { "append": $append_items, "remove": ($remove_items[0] // []) }
         ' < "${chunked_lists[0]}" > payload.json
 
         # Patch list using the generated payload file
