@@ -5,7 +5,7 @@ API_TOKEN="$API_TOKEN"
 ACCOUNT_ID="$ACCOUNT_ID"
 PREFIX="Block ads"
 MAX_LIST_SIZE=1000
-MAX_LISTS=299
+MAX_LISTS=350
 MAX_RETRIES=10
 
 # Define error function
@@ -22,22 +22,29 @@ function silent_error() {
     exit 0
 }
 
-Run chmod +x block_ads.sh
-Downloading AdGuard list...
-Clean domains remaining: 162822
-Creating list...
-Cloudflare Error Response: {
-  "result": null,
-  "success": false,
-  "errors": [
-    {
-      "message": "item: '|a.klaviyo.com' error: invalid domain name: |a.klaviyo.com"
-    }
-  ],
-  "messages": []
-}
-Error: Failed to create list
-Error: Process completed with exit code 1.
+# Download and parse AdGuard DNS filter safely
+echo "Downloading AdGuard list..."
+curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt" | \
+    tr -d '\r' | \
+    grep -vE '^[[:space:]]*[!#@]' | \
+    sed 's/\$.*//g' | \
+    sed -E 's/^\|+//g' | \
+    sed 's/\^$//g' | \
+    sed 's/\^//g' | \
+    grep -vE '[/:]' | \
+    grep -v '\*' | \
+    grep '\.' | \
+    sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
+    grep -v '^$' | \
+    grep -vE '^[.-]' | \
+    grep -vE '[.-]$' | \
+    grep -vE '\.\.' | \
+    sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
+
+echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
+
+# Ensure the file is not empty
+[[ -s adguard_domains.txt ]] || error "The domains list is empty after processing"
 
 # Check if the file has changed
 git diff --exit-code adguard_domains.txt > /dev/null && silent_error "The domains list has not changed"
