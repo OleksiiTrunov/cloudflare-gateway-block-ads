@@ -36,6 +36,9 @@ curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github
     grep '\.' | \
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
     grep -v '^$' | \
+    grep -vE '^[.-]' | \
+    grep -vE '[.-]$' | \
+    grep -vE '\.\.' | \
     sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
 
 echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
