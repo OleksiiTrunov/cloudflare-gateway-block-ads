@@ -11,19 +11,19 @@ MAX_RETRIES=10
 # Define error function
 function error() {
     echo "Error: $1"
-    rm -f adguard_domains.txt.* payload.json downloaded_raw.txt
+    rm -f adguard_domains.txt.* adguard_ips.txt.* payload.json ip_payload.json downloaded_raw.txt
     exit 1
 }
 
 # Define silent error function
 function silent_error() {
     echo "Silent error: $1"
-    rm -f adguard_domains.txt.* payload.json downloaded_raw.txt
+    rm -f adguard_domains.txt.* adguard_ips.txt.* payload.json ip_payload.json downloaded_raw.txt
     exit 0
 }
 
-# Download and parse AdGuard DNS filter safely
-echo "Downloading AdGuard list..."
+# Download and parse AdGuard DNS filter for DOMAINS safely
+echo "Downloading AdGuard list for domains..."
 curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt" | \
     tr -d '\r' | \
     grep -vE '^[[:space:]]*[!#@]' | \
@@ -39,6 +39,7 @@ curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github
     grep -vE '^[.-]' | \
     grep -vE '[.-]$' | \
     grep -vE '\.\.' | \
+    grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | \
     sort -u > adguard_domains.txt || silent_error "Failed to download the domains list"
 
 echo "Clean domains remaining: $(wc -l < adguard_domains.txt)"
@@ -140,7 +141,7 @@ fi
 
 # Create extra lists if required
 for file in "${chunked_lists[@]}"; do
-    echo "Creating list..."
+    echo "Creating domain list..."
 
     # Format list counter
     formatted_counter=$(printf "%03d" "$list_counter")
@@ -174,6 +175,48 @@ for file in "${chunked_lists[@]}"; do
     # Increment list counter
     list_counter=$((list_counter + 1))
 done
+
+# --- OPTIONAL: EXTRACT AND CREATE IP LISTS ---
+echo "Extracting IP addresses..."
+curl -sSfL --retry "$MAX_RETRIES" --retry-all-errors "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt" | \
+    tr -d '\r' | \
+    grep -vE '^[[:space:]]*[!#@]' | \
+    sed 's/\$.*//g' | \
+    grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | \
+    sort -u > adguard_ips.txt
+
+ip_total_lines=$(wc -l < adguard_ips.txt)
+echo "Clean IPs remaining: ${ip_total_lines}"
+
+if [[ ${ip_total_lines} -gt 0 ]]; then
+    split -l 500 adguard_ips.txt adguard_ips.txt.
+    ip_counter=1
+    for ip_file in adguard_ips.txt.*; do
+        ip_formatted_counter=$(printf "%03d" "$ip_counter")
+        echo "Creating IP list ${ip_formatted_counter}..."
+        
+        jq -R -s --arg PREFIX "${PREFIX} IP - ${ip_formatted_counter}" '
+            split("\n") | 
+            map(sub("\r$"; "") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "")) |
+            map(select(length > 0) | { "value": . }) as $items |
+            { "name": $PREFIX, "type": "IP", "items": $items }
+        ' < "${ip_file}" > ip_payload.json
+
+        ip_response=$(curl -sSL --retry "$MAX_RETRIES" --retry-all-errors -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/gateway/lists" \
+            -H "Authorization: Bearer ${API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data @ip_payload.json)
+
+        if echo "$ip_response" | jq -e '.success' > /dev/null; then
+            used_list_ids+=("$(echo "$ip_response" | jq -r '.result.id')")
+        else
+            echo "Cloudflare IP Error Response: $ip_response"
+        fi
+
+        rm -f "${ip_file}" ip_payload.json
+        ip_counter=$((ip_counter + 1))
+    done
+fi
 
 # Ensure policy called exactly $PREFIX exists, else create it
 policy_id=$(echo "${current_policies}" | jq -r --arg PREFIX "${PREFIX}" '.result | map(select(.name == $PREFIX)) | .[0].id') || error "Failed to get policy ID"
