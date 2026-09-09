@@ -15,10 +15,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install jq, curl and other utilities
+      - name: Update apt cache
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl coreutils
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get clean
+          sudo apt-get update -o Acquire::CompressionTypes::Order::Bzr=gz
 
       - name: Run the script
         env:
