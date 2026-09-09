@@ -15,24 +15,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Update apt cache
-        run: |
-          sudo rm -rf /var/lib/apt/lists/*
-          sudo apt-get clean
-          sudo apt-get update -o Acquire::CompressionTypes::Order::Bzr=gz
-
       - name: Run the script
         env:
           API_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          chmod +x block_ads.sh
-          ./block_ads.sh
-      - name: Run the script
-        env:
-          API_TOKEN: ${{ secrets.API_TOKEN }}
-          ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x block_ads.sh
@@ -49,5 +35,4 @@ jobs:
             Все поломалось!
             О нет!
             Cloudflare AdBlock не работает!
-            Скрипт не смог обновить списки! 
-               
+            Скрипт не смог обновить списки!
